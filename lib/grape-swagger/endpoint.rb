@@ -182,26 +182,32 @@ module Grape
 
       codes.each_with_object({}) do |value, memo|
         memo[value[:code]] = { description: value[:message] }
-
-        response_model = @item
-        response_model = expose_params_from_model(value[:model]) if value[:model]
-
+        #
+        # response_model = @item
+        # response_model = expose_params_from_model(value[:model]) if value[:model]
+        #
         if memo.key?(200) && route.request_method == 'DELETE' && value[:model].nil?
           memo[204] = memo.delete(200)
           value[:code] = 204
         end
 
-        next if memo.key?(204)
-        next unless !response_model.start_with?('Swagger_doc') &&
-                    ((@definitions[response_model] && value[:code].to_s.start_with?('2')) || value[:model])
+        if memo.key?(204) && memo.key?(201)
+          memo.delete(201)
+        end
 
-        @definitions[response_model][:description] = description_object(route, markdown)
-        # TODO: proof that the definition exist, if model isn't specified
-        memo[value[:code]][:schema] = if route.options[:is_array]
-                                        { 'type' => 'array', 'items' => { '$ref' => "#/definitions/#{response_model}" } }
-                                      else
-                                        { '$ref' => "#/definitions/#{response_model}" }
-                                      end
+        next if memo.key?(204)
+        # next unless !response_model.start_with?('Swagger_doc') &&
+        #             ((@definitions[response_model] && value[:code].to_s.start_with?('2')) || value[:model])
+        #
+        # @definitions[response_model][:description] = description_object(route, markdown)
+        # # TODO: proof that the definition exist, if model isn't specified
+        # memo[value[:code]][:schema] = if route.options[:is_array]
+        #                                 { 'type' => 'array', 'items' => { '$ref' => "#/definitions/#{response_model}" } }
+        #                               else
+        #                                 { '$ref' => "#/definitions/#{response_model}" }
+        #                               end
+        memo[value[:code]][:schema] = {}
+        memo[value[:code]][:examples] = model_as_json(value[:model]) if value[:model]
       end
     end
 
@@ -260,6 +266,12 @@ module Grape
       return false unless param_types
       param_types = param_types[0].split(',') if param_types
       param_types.size == 1
+    end
+
+    def model_as_json(model)
+      model_instance = model.respond_to?(:first) ? model.first : model
+      settings = model_instance.class.respond_to?(:json_settings) ? model_instance.class.json_settings : {}
+      model.instance_of?(ActiveRecord::Base) ? model.as_json(settings) : model
     end
 
     def expose_params_from_model(model)
